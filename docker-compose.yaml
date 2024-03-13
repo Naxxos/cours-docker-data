@@ -1,0 +1,112 @@
+version: "3"
+
+# All available services
+services:
+
+  # Computation
+  jupyter:
+    container_name: "jupyter-container"
+    restart: "always"
+    build: services/jupyter
+    env_file:
+      - ./config/jupyter.env
+      - ./config/minio.env
+      - ./config/shared_database.env
+    user: "${UID}:${GID}"
+    volumes:
+      - ./shared/notebooks/:/home/jovyan/work/notebooks
+    ports:
+      - 8888:8888
+    entrypoint: sh -c 'start-notebook.sh --NotebookApp.token=$$JUPYTER_PASSWORD'
+
+  # Database
+  postgres:
+    container_name: "postgres-container"
+    restart: "always"
+    image: postgres
+    user: "${UID}:${GID}"
+    env_file:
+      - ./config/postgres.env
+      - ./config/shared_database.env
+      - ./config/nocodb_database.env
+    healthcheck:
+      interval: 10s
+      retries: 10
+      test: "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""
+      timeout: 2s
+    volumes:
+      - postgres_volume:/var/lib/postgresql/data/
+      - ./services/postgres/:/docker-entrypoint-initdb.d/
+    ports:
+      - 5432:5432
+
+  # Database explorer
+  pgadmin:
+    container_name: "pgadmin-container"
+    image: dpage/pgadmin4
+    env_file:
+      - ./config/pgadmin.env
+    volumes:
+      - pgadmin_volume:/root/.pgadmin
+    ports:
+      - 5050:80
+    restart: "always"
+
+  # Model Storage
+  minio:
+    container_name: "minio-container"
+    restart: "always"
+    image: minio/minio
+    env_file:
+      - ./config/minio.env
+    volumes:
+      - minio_volume:/data
+    ports:
+      - 9000:9000
+      - 9001:9001
+    command: server /data
+
+  # API
+  fastapi:
+    container_name: "fastapi-container"
+    restart: "always"
+    build: services/fastapi
+    env_file:
+      - ./config/minio.env
+    volumes:
+      - ./services/fastapi/app:/app
+    ports:
+      - 80:80
+
+  # Admin Overview
+  portainer:
+    container_name: "portainer-container"
+    restart: "always"
+    image: portainer/portainer
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_volume:/data
+    ports:
+      - 9090:9000
+    command: -H unix:///var/run/docker.sock
+
+  nocodb:
+    container_name: "nocodb-container"
+    env_file:
+      - ./config/postgres.env
+      - ./config/shared_database.env
+      - ./config/nocodb_database.env
+    environment:
+      NC_DB: "pg://postgres:5432?u=nocodb&p=changeme1234&d=nocodb"
+    image: "nocodb/nocodb:latest"
+    ports:
+      - "8080:8080"
+    restart: always
+    volumes:
+      - "./shared/nocodb/data:/usr/app/data"
+# Volumes to persist data
+volumes:
+  postgres_volume:
+  pgadmin_volume:
+  minio_volume:
+  portainer_volume:
