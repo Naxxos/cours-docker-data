@@ -6,5 +6,3 @@ RUN pip install --no-cache-dir \
     minio \
     polars \
     duckdb \
-    sqlalchemy \
-    psycopg2
